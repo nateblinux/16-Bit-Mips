@@ -33,11 +33,11 @@ endmodule
 
 module MainControl (Op,Control); 
   input [3:0] Op;
-  output reg [4:0] Control;
+  output reg [6:0] Control;
 // Control bits: RegDst,ALUSrc,RegWrite,ALUOp
   always @(Op) case (Op)
-    6'b000000: Control <= 5'b10110; // Rtype
-    6'b0111: Control <= 5'b01100; // ADDI
+    4'b0010: Control <= 7'b1010000; // Rtype and?
+    4'b0111: Control <= 7'b0110010; // ADDI
   endcase
 endmodule
 
@@ -70,8 +70,8 @@ module CPU (clock,PC,ALUOut,IR);
   wire [1:0] WR; 
 // Test Program
   initial begin 
-    IMemory[0] = 16'b0111010000001111;  // addi $t1, $0,  15   ($t1=15)
-    IMemory[1] = 16'b0111100000000111;  // addi $t2, $0,  7    ($t2=7)
+    IMemory[0] = 16'b0111000100001111;  // addi $t1, $0,  15   ($t1=15)
+    IMemory[1] = 16'b0111001000000111;  // addi $t2, $0,  7    ($t2=7)
     IMemory[2] = 16'b0010011011000000;  // and  $t3, $t1, $t2  ($t3=7)
     //IMemory[3] = 32'h012b5022;  // sub  $t2, $t1, $t3  ($t2=8)
     //IMemory[4] = 32'h014b5025;  // or   $t2, $t2, $t3  ($t2=15)
@@ -82,14 +82,14 @@ module CPU (clock,PC,ALUOut,IR);
   end
   initial PC = 0;
   assign IR = IMemory[PC>>2];
-  assign WR = (RegDst) ? IR[8:7]: IR[10:9]; // RegDst Mux
+  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
   assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
   assign SignExtend = {{8{IR[7]}},IR[7:0]}; // sign extension unit
-  reg_file rf (IR[10:9],IR[8:7],WR,ALUOut,RegWrite,A,RD2,clock);
-  alu fetch (4'b0010,PC,16'b11,NextPC,Unused);
+  reg_file rf (IR[11:10],IR[9:8],WR,ALUOut,RegWrite,A,RD2,clock);
+  alu fetch (4'b0010,PC,16'b100,NextPC,Unused);
   alu ex (ALUctl, A, B, ALUOut, Zero);
-  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite,ALUOp}); 
-  ALUControl ALUCtrl(ALUOp, IR[5:0], ALUctl); // ALU control unit
+  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite,ALUctl}); 
+ // ALUControl ALUCtrl(ALUOp, IR[5:0], ALUctl); // ALU control unit
   always @(negedge clock) begin 
     PC <= NextPC;
   end

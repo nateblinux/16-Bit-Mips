@@ -13,23 +13,107 @@ module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 	Regs[WR] <= WD;
 endmodule
 
-module alu (ALUctl,A,B,ALUOut,Zero);
-  input [3:0] ALUctl;
-  input [15:0] A,B;
-  output reg [15:0] ALUOut;
-  output Zero;
-  always @(ALUctl, A, B) // reevaluate if these change
-    case (ALUctl)
-      4'b0000: ALUOut <= A & B;
-      4'b0001: ALUOut <= A | B;
-      4'b0010: ALUOut <= A + B;
-      4'b0110: ALUOut <= A - B;
-      4'b0111: ALUOut <= A < B ? 1:0;
-      4'b1100: ALUOut <= ~(A & B);
-      4'b1101: ALUOut <= ~(A | B);
-    endcase
-  assign Zero = (ALUOut==0); // Zero is true if ALUOut is 0
+module halfadder (S,C,x,y);
+   input x,y;
+   output S,C;
+   
+   xor (S,x,y);
+   and (C,x,y);
 endmodule
+
+module fulladder (S,C,x,y,z);
+   input x,y,z;
+   output S,C;
+   wire S1,D1,D2; 
+    halfadder HA1 (S1,D1,x,y),
+              HA2 (S,D2,S1,z);
+    or g1(C,D2,D1);
+endmodule
+
+module two_bit_multiplex(x, y, z, O);
+    input x, y, z;
+    output O;
+    not n1(z1, z);
+    and a1(S1, x, y),
+       a2(S2, y, z),
+       a3(S3, x, z1);
+    or(O, S1, S2, S3);
+endmodule
+
+module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
+    input A, B, C, D, ctrl1, ctrl2;
+    output O;
+    two_bit_multiplex m1(A, B, ctrl1, tmp),
+                      m2(C, D, ctrl1, tmp1),
+                      m3(tmp, tmp1, ctrl2, O);
+endmodule
+
+
+module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
+    input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
+    output out, Cout;
+    
+    not n1(nA, A),
+        n2(nB, B);
+        
+    two_bit_multiplex mA(A, nA, anot, uA),
+                      mB(B, nB, bnot, uB);
+    
+    and a1(BandA, uA, uB);
+    or  o1(BorA, uA, uB);
+    
+    fulladder adder(S, Cout, uA, uB, carryIn);
+    
+    four_bit_multiplex m1(BandA, BorA, S, less, ctrl1, ctrl2, out);
+endmodule
+
+module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
+    input A, B, bnot, anot, carryIn, ctrl1, ctrl2;
+    output out, Cout, set;
+    
+    not n1(nA, A),
+        n2(nB, B);
+        
+    two_bit_multiplex mA(A, nA, anot, uA),
+                      mB(B, nB, bnot, uB);
+    
+    and a1(BandA, uA, uB);
+    or  o1(BorA, uA, uB);
+    
+    fulladder adder(S, Cout, uA, uB, carryIn);
+    and(set, S, 1);
+    
+    four_bit_multiplex m1(BandA, BorA, S, 1'b0, ctrl1, ctrl2, out);
+endmodule
+
+module alu(op, a, b, result, zero);
+    input[3:0] op;
+    input [15:0] a, b;
+    output[15:0] result;
+    output zero;
+    
+   one_bit_ALU a1 (a[0], b[0], op[2], op[3], set, op[2], op[1], op[0], result[0], Carry1);
+   one_bit_ALU a2 (a[1], b[1], op[2], op[3], 1'b0, Carry1, op[1], op[0], result[1], Carry2);
+   one_bit_ALU a3 (a[2], b[2], op[2], op[3], 1'b0, Carry2, op[1], op[0], result[2], Carry3);
+   one_bit_ALU a4 (a[3], b[3], op[2], op[3], 1'b0, Carry3, op[1], op[0], result[3], Carry4);
+   one_bit_ALU a5 (a[4], b[4], op[2], op[3], 1'b0, Carry4, op[1], op[0], result[4], Carry5);
+   one_bit_ALU a6 (a[5], b[5], op[2], op[3], 1'b0, Carry5, op[1], op[0], result[5], Carry6);
+   one_bit_ALU a7 (a[6], b[6], op[2], op[3], 1'b0, Carry6, op[1], op[0], result[6], Carry7);
+   one_bit_ALU a8 (a[7], b[7], op[2], op[3], 1'b0, Carry7, op[1], op[0], result[7], Carry8);
+   one_bit_ALU a9 (a[8], b[8], op[2], op[3], 1'b0, Carry8, op[1], op[0], result[8], Carry9);
+   one_bit_ALU a10 (a[9], b[9], op[2], op[3], 1'b0, Carry9, op[1], op[0], result[9], Carry10);
+   one_bit_ALU a11 (a[10], b[10], op[2], op[3], 1'b0, Carry10, op[1], op[0], result[10], Carry11);
+   one_bit_ALU a12 (a[11], b[11], op[2], op[3], 1'b0, Carry11, op[1], op[0], result[11], Carry12);
+   one_bit_ALU a13 (a[12], b[12], op[2], op[3], 1'b0, Carry12, op[1], op[0], result[12], Carry13);
+   one_bit_ALU a14 (a[13], b[13], op[2], op[3], 1'b0, Carry13, op[1], op[0], result[13], Carry14);
+   one_bit_ALU a15 (a[14], b[14], op[2], op[3], 1'b0, Carry14, op[1], op[0], result[14], Carry15);
+   one_bit_ALU2 a16 (a[15], b[15], op[2], op[3], set, Carry15, op[1], op[0], result[15], Cout);
+   
+   xor(o1, Carry3, Cout);
+   nor(zero, result[0], result[1], result[2], result[3]);
+    
+endmodule
+
 
 module MainControl (Op,Control); 
   input [3:0] Op;
@@ -41,8 +125,8 @@ module MainControl (Op,Control);
     4'b0000: Control <= 7'b1010010; //ADD
     4'b0001: Control <= 7'b1010110; //SUB
     4'b0011: Control <= 7'b1010001; //OR
-    4'b0100: Control <= 7'b1011101; //NOR
-    4'b0101: Control <= 7'b1011100; //NAND
+    4'b0100: Control <= 7'b1011100; //NOR
+    4'b0101: Control <= 7'b1011101; //NAND
     4'b0110: Control <= 7'b1010111; //SLT
     
   endcase

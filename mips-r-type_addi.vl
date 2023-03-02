@@ -1,16 +1,22 @@
-// Behavioral model of MIPS - single cycle implementation, R-types and addi
+// Behavioral implementation of MIPS Register File (modified to 16 bit reg width over 4 regs)
 module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
+
   input [1:0] RR1,RR2,WR;
   input [15:0] WD;
   input RegWrite,clock;
   output [15:0] RD1,RD2;
-  reg [15:0] Regs[0:15];
+
+  reg [15:0] Regs[0:3];
+
   assign RD1 = Regs[RR1];
   assign RD2 = Regs[RR2];
+
   initial Regs[0] = 0;
+
   always @(negedge clock)
     if (RegWrite==1 & WR!=0) 
 	Regs[WR] <= WD;
+
 endmodule
 
 module halfadder (S,C,x,y);

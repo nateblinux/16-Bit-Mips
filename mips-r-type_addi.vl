@@ -122,7 +122,7 @@ module alu(op, a, b, result, zero);
    one_bit_ALU2 a16 (a[15], b[15], op[2], op[3], set, Carry15, op[1], op[0], result[15], Cout);
    
    xor(o1, Carry3, Cout);
-   nor(zero, result[0], result[1], result[2], result[3]);
+   nor(zero, result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8], result[9], result[10], result[11], result[12], result[13], result[14], result[15]);
     
 endmodule
 

@@ -1,3 +1,4 @@
+
 // Behavioral implementation of MIPS Register File (modified to 16 bit reg width over 4 regs)
 module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 
@@ -237,4 +238,3 @@ Clock PC   IR                                 WD
 0     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
 1     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
 */
-

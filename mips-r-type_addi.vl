@@ -1,3 +1,4 @@
+
 // Behavioral implementation of MIPS Register File (modified to 16 bit reg width over 4 regs)
 module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 
@@ -19,7 +20,6 @@ module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 
 endmodule
 
-// Gate level implementation of a half adder
 module halfadder (S,C,x,y);
    input x,y;
    output S,C;
@@ -28,7 +28,6 @@ module halfadder (S,C,x,y);
    and (C,x,y);
 endmodule
 
-// Gate level implementation of a full adder
 module fulladder (S,C,x,y,z);
    input x,y,z;
    output S,C;
@@ -38,7 +37,6 @@ module fulladder (S,C,x,y,z);
     or g1(C,D2,D1);
 endmodule
 
-// Gate level 2x1 multiplexor
 module two_bit_multiplex(x, y, z, O);
     input x, y, z;
     output O;
@@ -49,7 +47,6 @@ module two_bit_multiplex(x, y, z, O);
     or(O, S1, S2, S3);
 endmodule
 
-// Gate level 4x1 multiplexor
 module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
     input A, B, C, D, ctrl1, ctrl2;
     output O;
@@ -58,7 +55,7 @@ module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
                       m3(tmp, tmp1, ctrl2, O);
 endmodule
 
-// Gate level implementation of all except the most significant 1 bit ALU
+
 module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
     output out, Cout;
@@ -77,7 +74,6 @@ module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, less, ctrl1, ctrl2, out);
 endmodule
 
-// Gate level implementation of most significant 1 bit ALU
 module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, carryIn, ctrl1, ctrl2;
     output out, Cout, set;
@@ -97,7 +93,6 @@ module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, 1'b0, ctrl1, ctrl2, out);
 endmodule
 
-// Gate level implementation of a 16 bit alu, comprised of 15 one_bit_ALU's and 1 one_bit_ALU2 for the most significant bit.
 module alu(op, a, b, result, zero);
     input[3:0] op;
     input [15:0] a, b;
@@ -122,41 +117,44 @@ module alu(op, a, b, result, zero);
    one_bit_ALU2 a16 (a[15], b[15], op[2], op[3], set, Carry15, op[1], op[0], result[15], Cout);
    
    xor(o1, Carry3, Cout);
-   nor(zero, result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8], result[9], result[10], result[11], result[12], result[13], result[14], result[15]);
+   nor(zero, result[0], result[1], result[2], result[3]);
     
 endmodule
 
 
 module MainControl (Op,Control); 
   input [3:0] Op;
-  output reg [6:0] Control;
-// Control bits: RegDst,ALUSrc,RegWrite,ALUOp
+  output reg [10:0] Control;
+// Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
   always @(Op) case (Op)
-    4'b0010: Control <= 7'b1010000; // AND
-    4'b0111: Control <= 7'b0110010; // ADDI
-    4'b0000: Control <= 7'b1010010; //ADD
-    4'b0001: Control <= 7'b1010110; //SUB
-    4'b0011: Control <= 7'b1010001; //OR
-    4'b0100: Control <= 7'b1011100; //NOR
-    4'b0101: Control <= 7'b1011101; //NAND
-    4'b0110: Control <= 7'b1010111; //SLT
+    4'b0010: Control <= 12'b101_00_00_0000; // AND
+    4'b0111: Control <= 12'b011_00_00_0010; // ADDI
+    4'b0000: Control <= 12'b101_00_00_0010; //ADD
+    4'b0001: Control <= 12'b101_00_00_0110; //SUB
+    4'b0011: Control <= 12'b101_00_00_0001; //OR
+    4'b0100: Control <= 12'b101_00_00_1100; //NOR
+    4'b0101: Control <= 12'b101_00_00_1101; //NAND
+    4'b0110: Control <= 12'b101_00_00_0111; //SLT
+    4'b1000: Control <= 12'b011_10_00_0010; //LW
+    4'b1001: Control <= 12'b010_01_00_0010; //SW
+    
     
   endcase
 endmodule
 
-// The overall MIPS CPU that uses all the other components
-module CPU (clock,PC,ALUOut,IR);
+module CPU (clock,WD,IR,PC);
+
   input clock;
-  output [15:0] ALUOut,IR,PC;
-  reg[15:0] PC;
-  reg[15:0] IMemory[0:1023];
-  wire [15:0] IR,NextPC,A,B,ALUOut,RD2,SignExtend;
+  output [15:0] WD,IR,PC;
+  reg[15:0] PC, IMemory[0:1023], DMemory[0:1023];
+  wire [15:0] IR,SignExtend,NextPC,RD2,A,B,ALUOut,PCplus4,Target;
+  wire [1:0] WR;
   wire [3:0] ALUctl;
   wire [1:0] ALUOp;
-  wire [1:0] WR; 
-// Test Program
+  wire[1:0] Branch;
   initial begin 
-    IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
+ // Program: swap memory cells and compute absolute value
+    /*IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
     IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
     IMemory[2] = 16'b0010_01_10_11_000000;  // and  $t3, $t1, $t2  ($t3=7)
     IMemory[3] = 16'b0001_01_11_10_000000;  // sub  $t2, $t1, $t3  ($t2=8)
@@ -165,6 +163,26 @@ module CPU (clock,PC,ALUOut,IR);
     IMemory[6] = 16'b0100_10_11_01_000000;  // nor  $t1, $t2, $t3  ($t1=-32)
     IMemory[7] = 16'b0110_11_10_01_000000;  // slt  $t1, $t3, $t2  ($t1=0)
     IMemory[8] = 16'b0110_10_11_01_000000;  // slt  $t1, $t2, $t3  ($t1=1)
+    */
+    
+    IMemory[0] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
+    IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
+    
+    IMemory[2] = 16'b1001_00_10_00000100;  // sw $t2, 0($0)
+    IMemory[3] = 16'b1000_00_10_00000100;  // lw $t1, 0($0) 
+    /*
+    IMemory[2] = 32'h012a582a;  // slt $t3, $t1, $t2
+    IMemory[3] = 32'h11600002;  // beq $t3, $0, IMemory[6] 
+    IMemory[4] = 32'hac090004;  // sw $t1, 4($0) 
+    IMemory[5] = 32'hac0a0000;  // sw $t2, 0($0) 
+    IMemory[6] = 32'h8c090000;  // lw $t1, 0($0) 
+    IMemory[7] = 32'h8c0a0004;  // lw $t2, 4($0) 
+    IMemory[8] = 32'h014a5027;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
+    IMemory[9] = 32'h214a0001;  // addi $t2, $t2, 1 
+    IMemory[10] = 32'h012a5820;  // add $t3, $t1, $t2 */
+ // Data
+    DMemory [0] = 16'd3; // swap the cells and see how the simulation output changes
+    DMemory [1] = 16'd9;
   end
   initial PC = 0;
   assign IR = IMemory[PC>>2];
@@ -174,9 +192,15 @@ module CPU (clock,PC,ALUOut,IR);
   reg_file rf (IR[11:10],IR[9:8],WR,ALUOut,RegWrite,A,RD2,clock);
   alu fetch (4'b0010,PC,16'b100,NextPC,Unused);
   alu ex (ALUctl, A, B, ALUOut, Zero);
-  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite,ALUctl});
+  alu branch (4'b0010,SignExtend<<2,PCplus4,Target,Unused2);
+  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite,Branch ,ALUctl});
+  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
+  assign WD = (MemtoReg) ? DMemory[ALUOut>>2]: ALUOut; // MemtoReg Mux
+  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
+  assign NextPC = (Branch && Zero) ? Target: PCplus4; // Branch Mux
   always @(negedge clock) begin 
     PC <= NextPC;
+    if (MemWrite) DMemory[ALUOut>>2] <= RD2;
   end
 endmodule
 
@@ -184,33 +208,33 @@ endmodule
 module test ();
   reg clock;
   wire signed [15:0] WD,IR,PC;
-  CPU test_cpu(clock,PC,WD,IR);
+  CPU test_cpu(clock,WD,IR,PC);
   always #1 clock = ~clock;
   initial begin
-    $display ("Clock PC   IR                                 WD");
-    $monitor ("%b     %2d   %b  %3d (%b)",clock,PC,IR,WD,WD);
+    $display ("PC  IR                                WD");
+    $monitor ("%2d  %b %2d (%b)",PC,IR,WD,WD);
     clock = 1;
-    #16 $finish;
+    #20 $finish;
   end
 endmodule
 
 /* Output
 Clock PC   IR                                 WD
-1      0   0111000100001111   15 (0000000000001111)
-0      4   0111001000000111    7 (0000000000000111)
-1      4   0111001000000111    7 (0000000000000111)
-0      8   0010011011000000    7 (0000000000000111)
-1      8   0010011011000000    7 (0000000000000111)
-0     12   0001011110000000    8 (0000000000001000)
-1     12   0001011110000000    8 (0000000000001000)
-0     16   0011101110000000   15 (0000000000001111)
-1     16   0011101110000000   15 (0000000000001111)
-0     20   0000101111000000   22 (0000000000010110)
-1     20   0000101111000000   22 (0000000000010110)
-0     24   0100101101000000  -32 (1111111111100000)
-1     24   0100101101000000  -32 (1111111111100000)
-0     28   0110111001000000    0 (0000000000000000)
-1     28   0110111001000000    0 (0000000000000000)
-0     32   0110101101000000    1 (0000000000000001)
-1     32   0110101101000000    1 (0000000000000001)
+1      0   00100000000010010000000000001111   15 (00000000000000000000000000001111)
+0      4   00100000000010100000000000000111    7 (00000000000000000000000000000111)
+1      4   00100000000010100000000000000111    7 (00000000000000000000000000000111)
+0      8   00000001001010100101100000100100    7 (00000000000000000000000000000111)
+1      8   00000001001010100101100000100100    7 (00000000000000000000000000000111)
+0     12   00000001001010110101000000100010    8 (00000000000000000000000000001000)
+1     12   00000001001010110101000000100010    8 (00000000000000000000000000001000)
+0     16   00000001010010110101000000100101   15 (00000000000000000000000000001111)
+1     16   00000001010010110101000000100101   15 (00000000000000000000000000001111)
+0     20   00000001010010110101100000100000   22 (00000000000000000000000000010110)
+1     20   00000001010010110101100000100000   22 (00000000000000000000000000010110)
+0     24   00000001010010110100100000100111  -32 (11111111111111111111111111100000)
+1     24   00000001010010110100100000100111  -32 (11111111111111111111111111100000)
+0     28   00000001011010100100100000101010    0 (00000000000000000000000000000000)
+1     28   00000001011010100100100000101010    0 (00000000000000000000000000000000)
+0     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
+1     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
 */

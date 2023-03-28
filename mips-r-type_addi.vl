@@ -123,33 +123,37 @@ endmodule
 
 module MainControl (Op,Control); 
   input [3:0] Op;
-  output reg [6:0] Control;
-// Control bits: RegDst,ALUSrc,RegWrite,ALUOp
+  output reg [10:0] Control;
+// Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
   always @(Op) case (Op)
-    4'b0010: Control <= 7'b1010000; // AND
-    4'b0111: Control <= 7'b0110010; // ADDI
-    4'b0000: Control <= 7'b1010010; //ADD
-    4'b0001: Control <= 7'b1010110; //SUB
-    4'b0011: Control <= 7'b1010001; //OR
-    4'b0100: Control <= 7'b1011100; //NOR
-    4'b0101: Control <= 7'b1011101; //NAND
-    4'b0110: Control <= 7'b1010111; //SLT
+    4'b0010: Control <= 12'b101_00_00_0000; // AND
+    4'b0111: Control <= 12'b011_00_00_0010; // ADDI
+    4'b0000: Control <= 12'b101_00_00_0010; //ADD
+    4'b0001: Control <= 12'b101_00_00_0110; //SUB
+    4'b0011: Control <= 12'b101_00_00_0001; //OR
+    4'b0100: Control <= 12'b101_00_00_1100; //NOR
+    4'b0101: Control <= 12'b101_00_00_1101; //NAND
+    4'b0110: Control <= 12'b101_00_00_0111; //SLT
+    4'b1000: Control <= 12'b011_10_00_0010; //LW
+    4'b1001: Control <= 12'b010_01_00_0010; //SW
+    
     
   endcase
 endmodule
 
-module CPU (clock,PC,ALUOut,IR);
+module CPU (clock,WD,IR,PC);
+
   input clock;
-  output [15:0] ALUOut,IR,PC;
-  reg[15:0] PC;
-  reg[15:0] IMemory[0:1023];
-  wire [15:0] IR,NextPC,A,B,ALUOut,RD2,SignExtend;
+  output [15:0] WD,IR,PC;
+  reg[15:0] PC, IMemory[0:1023], DMemory[0:1023];
+  wire [15:0] IR,SignExtend,NextPC,RD2,A,B,ALUOut,PCplus4,Target;
+  wire [1:0] WR;
   wire [3:0] ALUctl;
   wire [1:0] ALUOp;
-  wire [1:0] WR; 
-// Test Program
+  wire[1:0] Branch;
   initial begin 
-    IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
+ // Program: swap memory cells and compute absolute value
+    /*IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
     IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
     IMemory[2] = 16'b0010_01_10_11_000000;  // and  $t3, $t1, $t2  ($t3=7)
     IMemory[3] = 16'b0001_01_11_10_000000;  // sub  $t2, $t1, $t3  ($t2=8)
@@ -158,6 +162,26 @@ module CPU (clock,PC,ALUOut,IR);
     IMemory[6] = 16'b0100_10_11_01_000000;  // nor  $t1, $t2, $t3  ($t1=-32)
     IMemory[7] = 16'b0110_11_10_01_000000;  // slt  $t1, $t3, $t2  ($t1=0)
     IMemory[8] = 16'b0110_10_11_01_000000;  // slt  $t1, $t2, $t3  ($t1=1)
+    */
+    
+    IMemory[0] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
+    IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
+    
+    IMemory[2] = 16'b1001_00_10_00000100;  // sw $t2, 0($0)
+    IMemory[3] = 16'b1000_00_10_00000100;  // lw $t1, 0($0) 
+    /*
+    IMemory[2] = 32'h012a582a;  // slt $t3, $t1, $t2
+    IMemory[3] = 32'h11600002;  // beq $t3, $0, IMemory[6] 
+    IMemory[4] = 32'hac090004;  // sw $t1, 4($0) 
+    IMemory[5] = 32'hac0a0000;  // sw $t2, 0($0) 
+    IMemory[6] = 32'h8c090000;  // lw $t1, 0($0) 
+    IMemory[7] = 32'h8c0a0004;  // lw $t2, 4($0) 
+    IMemory[8] = 32'h014a5027;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
+    IMemory[9] = 32'h214a0001;  // addi $t2, $t2, 1 
+    IMemory[10] = 32'h012a5820;  // add $t3, $t1, $t2 */
+ // Data
+    DMemory [0] = 16'd3; // swap the cells and see how the simulation output changes
+    DMemory [1] = 16'd9;
   end
   initial PC = 0;
   assign IR = IMemory[PC>>2];
@@ -167,9 +191,15 @@ module CPU (clock,PC,ALUOut,IR);
   reg_file rf (IR[11:10],IR[9:8],WR,ALUOut,RegWrite,A,RD2,clock);
   alu fetch (4'b0010,PC,16'b100,NextPC,Unused);
   alu ex (ALUctl, A, B, ALUOut, Zero);
-  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite,ALUctl});
+  alu branch (4'b0010,SignExtend<<2,PCplus4,Target,Unused2);
+  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite,Branch ,ALUctl});
+  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
+  assign WD = (MemtoReg) ? DMemory[ALUOut>>2]: ALUOut; // MemtoReg Mux
+  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
+  assign NextPC = (Branch && Zero) ? Target: PCplus4; // Branch Mux
   always @(negedge clock) begin 
     PC <= NextPC;
+    if (MemWrite) DMemory[ALUOut>>2] <= RD2;
   end
 endmodule
 
@@ -177,13 +207,13 @@ endmodule
 module test ();
   reg clock;
   wire signed [15:0] WD,IR,PC;
-  CPU test_cpu(clock,PC,WD,IR);
+  CPU test_cpu(clock,WD,IR,PC);
   always #1 clock = ~clock;
   initial begin
-    $display ("Clock PC   IR                                 WD");
-    $monitor ("%b     %2d   %b  %3d (%b)",clock,PC,IR,WD,WD);
+    $display ("PC  IR                                WD");
+    $monitor ("%2d  %b %2d (%b)",PC,IR,WD,WD);
     clock = 1;
-    #16 $finish;
+    #20 $finish;
   end
 endmodule
 
@@ -207,3 +237,4 @@ Clock PC   IR                                 WD
 0     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
 1     32   00000001010010110100100000101010    1 (00000000000000000000000000000001)
 */
+

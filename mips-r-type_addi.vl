@@ -137,6 +137,8 @@ module MainControl (Op,Control);
     4'b0110: Control <= 12'b101_00_00_0111; //SLT
     4'b1000: Control <= 12'b011_10_00_0010; //LW
     4'b1001: Control <= 12'b010_01_00_0010; //SW
+    4'b1010: Control <= 12'b000_00_01_0110;//BEQ
+    4'b1011: Control <= 12'b000_00_10_0110;//BNE
     
     
   endcase
@@ -151,7 +153,6 @@ module CPU (clock,WD,IR,PC);
   wire [1:0] WR;
   wire [3:0] ALUctl;
   wire [1:0] ALUOp;
-  wire[1:0] Branch;
   initial begin 
  // Program: swap memory cells and compute absolute value
     /*IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
@@ -166,38 +167,251 @@ module CPU (clock,WD,IR,PC);
     */
     
     IMemory[0] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
-    IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
-    
-    IMemory[2] = 16'b1001_00_10_00000100;  // sw $t2, 0($0)
-    IMemory[3] = 16'b1000_00_10_00000100;  // lw $t1, 0($0) 
-    /*
-    IMemory[2] = 32'h012a582a;  // slt $t3, $t1, $t2
-    IMemory[3] = 32'h11600002;  // beq $t3, $0, IMemory[6] 
-    IMemory[4] = 32'hac090004;  // sw $t1, 4($0) 
-    IMemory[5] = 32'hac0a0000;  // sw $t2, 0($0) 
-    IMemory[6] = 32'h8c090000;  // lw $t1, 0($0) 
-    IMemory[7] = 32'h8c0a0004;  // lw $t2, 4($0) 
-    IMemory[8] = 32'h014a5027;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
-    IMemory[9] = 32'h214a0001;  // addi $t2, $t2, 1 
-    IMemory[10] = 32'h012a5820;  // add $t3, $t1, $t2 */
+    IMemory[1] = 16'b1000_00_10_00000100;  // lw $t2, 4($0)
+    IMemory[2] = 16'b0110_01_10_11_000000;  // slt $t3, $t1, $t2
+    IMemory[3] = 16'b1010_11_00_00000010;  // beq $t3, $0, IMemory[6] 
+    IMemory[4] = 16'b1001_00_01_00000100;  // sw $t1, 4($0) 
+    IMemory[5] = 16'b1001_00_10_00000000;  // sw $t2, 0($0) 
+    IMemory[6] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
+    IMemory[7] = 16'b1000_00_10_00000100;  // lw $t2, 4($0) 
+    IMemory[8] = 16'b0100_10_10_10_000000;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
+    IMemory[9] = 16'b0111_10_10_00000001;  // addi $t2, $t2, 1 
+    IMemory[10] = 16'b0000_01_10_11_000000;  // add $t3, $t1, $t2
  // Data
-    DMemory [0] = 16'd3; // swap the cells and see how the simulation output changes
-    DMemory [1] = 16'd9;
+    DMemory [0] = 16'd7; // swap the cells and see how the simulation output changes
+    DMemory [1] = 16'd5;
   end
   initial PC = 0;
   assign IR = IMemory[PC>>2];
   assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
   assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
   assign SignExtend = {{8{IR[7]}},IR[7:0]}; // sign extension unit
-  reg_file rf (IR[11:10],IR[9:8],WR,ALUOut,RegWrite,A,RD2,clock);
-  alu fetch (4'b0010,PC,16'b100,NextPC,Unused);
+  reg_file rf (IR[11:10],IR[9:8],WR,WD,RegWrite,A,RD2,clock);
+  alu fetch (4'b0010,PC,16'b100,PCplus4,Unused);
   alu ex (ALUctl, A, B, ALUOut, Zero);
   alu branch (4'b0010,SignExtend<<2,PCplus4,Target,Unused2);
-  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite,Branch ,ALUctl});
+                // Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
+  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite, bne, beq ,ALUctl});
   assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
   assign WD = (MemtoReg) ? DMemory[ALUOut>>2]: ALUOut; // MemtoReg Mux
   assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
-  assign NextPC = (Branch && Zero) ? Target: PCplus4; // Branch Mux
+  assign NextPC = ((beq && Zero) || (bne && !Zero)) ? Target: PCplus4; // Branch Mux
+  always @(negedge clock) begin 
+    PC <= NextPC;
+    if (MemWrite) DMemory[ALUOut>>2] <= RD2;
+  end
+endmodule
+
+// Test module
+module test ();
+  reg clock;
+  wire signed [15:0] WD,IR,PC;
+  CPU test_cpu(clock,WD,IR,PC);
+  always #1 clock = ~clock;
+  initial begin
+    $display ("PC  IR                                WD");
+    $monitor ("%2d  %b %2d (%b)",PC,IR,WD,WD);
+    clock = 1;
+    #20 $finish;
+  end
+endmodule
+// Behavioral implementation of MIPS Register File (modified to 16 bit reg width over 4 regs)
+module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
+
+  input [1:0] RR1,RR2,WR;
+  input [15:0] WD;
+  input RegWrite,clock;
+  output [15:0] RD1,RD2;
+
+  reg [15:0] Regs[0:3];
+
+  assign RD1 = Regs[RR1];
+  assign RD2 = Regs[RR2];
+
+  initial Regs[0] = 0;
+
+  always @(negedge clock)
+    if (RegWrite==1 & WR!=0) 
+	Regs[WR] <= WD;
+
+endmodule
+
+module halfadder (S,C,x,y);
+   input x,y;
+   output S,C;
+   
+   xor (S,x,y);
+   and (C,x,y);
+endmodule
+
+module fulladder (S,C,x,y,z);
+   input x,y,z;
+   output S,C;
+   wire S1,D1,D2; 
+    halfadder HA1 (S1,D1,x,y),
+              HA2 (S,D2,S1,z);
+    or g1(C,D2,D1);
+endmodule
+
+module two_bit_multiplex(x, y, z, O);
+    input x, y, z;
+    output O;
+    not n1(z1, z);
+    and a1(S1, x, y),
+       a2(S2, y, z),
+       a3(S3, x, z1);
+    or(O, S1, S2, S3);
+endmodule
+
+module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
+    input A, B, C, D, ctrl1, ctrl2;
+    output O;
+    two_bit_multiplex m1(A, B, ctrl1, tmp),
+                      m2(C, D, ctrl1, tmp1),
+                      m3(tmp, tmp1, ctrl2, O);
+endmodule
+
+
+module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
+    input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
+    output out, Cout;
+    
+    not n1(nA, A),
+        n2(nB, B);
+        
+    two_bit_multiplex mA(A, nA, anot, uA),
+                      mB(B, nB, bnot, uB);
+    
+    and a1(BandA, uA, uB);
+    or  o1(BorA, uA, uB);
+    
+    fulladder adder(S, Cout, uA, uB, carryIn);
+    
+    four_bit_multiplex m1(BandA, BorA, S, less, ctrl1, ctrl2, out);
+endmodule
+
+module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
+    input A, B, bnot, anot, carryIn, ctrl1, ctrl2;
+    output out, Cout, set;
+    
+    not n1(nA, A),
+        n2(nB, B);
+        
+    two_bit_multiplex mA(A, nA, anot, uA),
+                      mB(B, nB, bnot, uB);
+    
+    and a1(BandA, uA, uB);
+    or  o1(BorA, uA, uB);
+    
+    fulladder adder(S, Cout, uA, uB, carryIn);
+    and(set, S, 1);
+    
+    four_bit_multiplex m1(BandA, BorA, S, 1'b0, ctrl1, ctrl2, out);
+endmodule
+
+module alu(op, a, b, result, zero);
+    input[3:0] op;
+    input [15:0] a, b;
+    output[15:0] result;
+    output zero;
+    
+   one_bit_ALU a1 (a[0], b[0], op[2], op[3], set, op[2], op[1], op[0], result[0], Carry1);
+   one_bit_ALU a2 (a[1], b[1], op[2], op[3], 1'b0, Carry1, op[1], op[0], result[1], Carry2);
+   one_bit_ALU a3 (a[2], b[2], op[2], op[3], 1'b0, Carry2, op[1], op[0], result[2], Carry3);
+   one_bit_ALU a4 (a[3], b[3], op[2], op[3], 1'b0, Carry3, op[1], op[0], result[3], Carry4);
+   one_bit_ALU a5 (a[4], b[4], op[2], op[3], 1'b0, Carry4, op[1], op[0], result[4], Carry5);
+   one_bit_ALU a6 (a[5], b[5], op[2], op[3], 1'b0, Carry5, op[1], op[0], result[5], Carry6);
+   one_bit_ALU a7 (a[6], b[6], op[2], op[3], 1'b0, Carry6, op[1], op[0], result[6], Carry7);
+   one_bit_ALU a8 (a[7], b[7], op[2], op[3], 1'b0, Carry7, op[1], op[0], result[7], Carry8);
+   one_bit_ALU a9 (a[8], b[8], op[2], op[3], 1'b0, Carry8, op[1], op[0], result[8], Carry9);
+   one_bit_ALU a10 (a[9], b[9], op[2], op[3], 1'b0, Carry9, op[1], op[0], result[9], Carry10);
+   one_bit_ALU a11 (a[10], b[10], op[2], op[3], 1'b0, Carry10, op[1], op[0], result[10], Carry11);
+   one_bit_ALU a12 (a[11], b[11], op[2], op[3], 1'b0, Carry11, op[1], op[0], result[11], Carry12);
+   one_bit_ALU a13 (a[12], b[12], op[2], op[3], 1'b0, Carry12, op[1], op[0], result[12], Carry13);
+   one_bit_ALU a14 (a[13], b[13], op[2], op[3], 1'b0, Carry13, op[1], op[0], result[13], Carry14);
+   one_bit_ALU a15 (a[14], b[14], op[2], op[3], 1'b0, Carry14, op[1], op[0], result[14], Carry15);
+   one_bit_ALU2 a16 (a[15], b[15], op[2], op[3], set, Carry15, op[1], op[0], result[15], Cout);
+   
+   xor(o1, Carry3, Cout);
+   nor(zero, result[0], result[1], result[2], result[3]);
+    
+endmodule
+
+
+module MainControl (Op,Control); 
+  input [3:0] Op;
+  output reg [10:0] Control;
+// Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
+  always @(Op) case (Op)
+    4'b0010: Control <= 12'b101_00_00_0000; // AND
+    4'b0111: Control <= 12'b011_00_00_0010; // ADDI
+    4'b0000: Control <= 12'b101_00_00_0010; //ADD
+    4'b0001: Control <= 12'b101_00_00_0110; //SUB
+    4'b0011: Control <= 12'b101_00_00_0001; //OR
+    4'b0100: Control <= 12'b101_00_00_1100; //NOR
+    4'b0101: Control <= 12'b101_00_00_1101; //NAND
+    4'b0110: Control <= 12'b101_00_00_0111; //SLT
+    4'b1000: Control <= 12'b011_10_00_0010; //LW
+    4'b1001: Control <= 12'b010_01_00_0010; //SW
+    4'b1010: Control <= 12'b000_00_01_0110;//BEQ
+    4'b1011: Control <= 12'b000_00_10_0110;//BNE
+    
+    
+  endcase
+endmodule
+
+module CPU (clock,WD,IR,PC);
+
+  input clock;
+  output [15:0] WD,IR,PC;
+  reg[15:0] PC, IMemory[0:1023], DMemory[0:1023];
+  wire [15:0] IR,SignExtend,NextPC,RD2,A,B,ALUOut,PCplus4,Target;
+  wire [1:0] WR;
+  wire [3:0] ALUctl;
+  wire [1:0] ALUOp;
+  initial begin 
+ // Program: swap memory cells and compute absolute value
+    /*IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
+    IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
+    IMemory[2] = 16'b0010_01_10_11_000000;  // and  $t3, $t1, $t2  ($t3=7)
+    IMemory[3] = 16'b0001_01_11_10_000000;  // sub  $t2, $t1, $t3  ($t2=8)
+    IMemory[4] = 16'b0011_10_11_10_000000;  // or   $t2, $t2, $t3  ($t2=15)
+    IMemory[5] = 16'b0000_10_11_11_000000;  // add  $t3, $t2, $t3  ($t3=22)
+    IMemory[6] = 16'b0100_10_11_01_000000;  // nor  $t1, $t2, $t3  ($t1=-32)
+    IMemory[7] = 16'b0110_11_10_01_000000;  // slt  $t1, $t3, $t2  ($t1=0)
+    IMemory[8] = 16'b0110_10_11_01_000000;  // slt  $t1, $t2, $t3  ($t1=1)
+    */
+    
+    IMemory[0] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
+    IMemory[1] = 16'b1000_00_10_00000100;  // lw $t2, 4($0)
+    IMemory[2] = 16'b0110_01_10_11_000000;  // slt $t3, $t1, $t2
+    IMemory[3] = 16'b1010_11_00_00000010;  // beq $t3, $0, IMemory[6] 
+    IMemory[4] = 16'b1001_00_01_00000100;  // sw $t1, 4($0) 
+    IMemory[5] = 16'b1001_00_10_00000000;  // sw $t2, 0($0) 
+    IMemory[6] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
+    IMemory[7] = 16'b1000_00_10_00000100;  // lw $t2, 4($0) 
+    IMemory[8] = 16'b0100_10_10_10_000000;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
+    IMemory[9] = 16'b0111_10_10_00000001;  // addi $t2, $t2, 1 
+    IMemory[10] = 16'b0000_01_10_11_000000;  // add $t3, $t1, $t2
+ // Data
+    DMemory [0] = 16'd5; // swap the cells and see how the simulation output changes
+    DMemory [1] = 16'd7;
+  end
+  initial PC = 0;
+  assign IR = IMemory[PC>>2];
+  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
+  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
+  assign SignExtend = {{8{IR[7]}},IR[7:0]}; // sign extension unit
+  reg_file rf (IR[11:10],IR[9:8],WR,WD,RegWrite,A,RD2,clock);
+  alu fetch (4'b0010,PC,16'b100,PCplus4,Unused);
+  alu ex (ALUctl, A, B, ALUOut, Zero);
+  alu branch (4'b0010,SignExtend<<2,PCplus4,Target,Unused2);
+                // Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
+  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite, bne, beq ,ALUctl});
+  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
+  assign WD = (MemtoReg) ? DMemory[ALUOut>>2]: ALUOut; // MemtoReg Mux
+  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
+  assign NextPC = (beq && Zero) ? Target: PCplus4; // Branch Mux
   always @(negedge clock) begin 
     PC <= NextPC;
     if (MemWrite) DMemory[ALUOut>>2] <= RD2;

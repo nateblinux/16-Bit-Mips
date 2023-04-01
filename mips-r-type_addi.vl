@@ -20,6 +20,7 @@ module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 
 endmodule
 
+//gate level half adder
 module halfadder (S,C,x,y);
    input x,y;
    output S,C;
@@ -28,6 +29,7 @@ module halfadder (S,C,x,y);
    and (C,x,y);
 endmodule
 
+//gate level full adder
 module fulladder (S,C,x,y,z);
    input x,y,z;
    output S,C;
@@ -37,6 +39,7 @@ module fulladder (S,C,x,y,z);
     or g1(C,D2,D1);
 endmodule
 
+//2 to 1 multiplexer
 //choose x on z=0, y on z=1
 module two_bit_multiplex(x, y, z, O);
     input x, y, z;
@@ -48,6 +51,7 @@ module two_bit_multiplex(x, y, z, O);
     or(O, S1, S2, S3);
 endmodule
 
+//16 bit wide 2 to 1 multiplexer
 module two_to_one_sixteen_bit_mux(x, y, z, O);
     input [15:0] x, y;
     input z;
@@ -70,6 +74,7 @@ module two_to_one_sixteen_bit_mux(x, y, z, O);
                       mux15 (x[15], y[15], z, O[15]);
 endmodule
 
+//4 to 1 multiplexer
 module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
     input A, B, C, D, ctrl1, ctrl2;
     output O;
@@ -78,7 +83,7 @@ module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
                       m3(tmp, tmp1, ctrl2, O);
 endmodule
 
-
+//alu module for all but the most significant bit
 module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
     output out, Cout;
@@ -97,6 +102,7 @@ module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, less, ctrl1, ctrl2, out);
 endmodule
 
+//alu module for the most significant bit
 module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, carryIn, ctrl1, ctrl2;
     output out, Cout, set;
@@ -116,6 +122,7 @@ module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, 1'b0, ctrl1, ctrl2, out);
 endmodule
 
+//16 bit arithmetic logic unit
 module alu(op, a, b, result, zero);
     input[3:0] op;
     input [15:0] a, b;
@@ -144,7 +151,7 @@ module alu(op, a, b, result, zero);
     
 endmodule
 
-
+//main control unit for interpretting opcodes into control signals for the rest of the CPU
 module MainControl (Op,Control); 
   input [3:0] Op;
   output reg [10:0] Control;
@@ -167,6 +174,7 @@ module MainControl (Op,Control);
   endcase
 endmodule
 
+//gate level branching logic
 module BranchControl (Beq, Bne, Zero, BranchCtrl);
     input Beq, Bne, Zero;
     output BranchCtrl;
@@ -175,6 +183,7 @@ module BranchControl (Beq, Bne, Zero, BranchCtrl);
     or (BranchCtrl, beqtrue, bnetrue);
 endmodule
 
+//Overall CPU
 module CPU (clock,WD,IR,PC);
 
   input clock;

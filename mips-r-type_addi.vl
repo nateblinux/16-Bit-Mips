@@ -19,6 +19,7 @@ module reg_file (RR1,RR2,WR,WD,RegWrite,RD1,RD2,clock);
 
 endmodule
 
+// Gate level implementation of a half adder
 module halfadder (S,C,x,y);
    input x,y;
    output S,C;
@@ -27,6 +28,7 @@ module halfadder (S,C,x,y);
    and (C,x,y);
 endmodule
 
+// Gate level implementation of a full adder
 module fulladder (S,C,x,y,z);
    input x,y,z;
    output S,C;
@@ -36,6 +38,7 @@ module fulladder (S,C,x,y,z);
     or g1(C,D2,D1);
 endmodule
 
+// Gate level 2x1 multiplexor
 module two_bit_multiplex(x, y, z, O);
     input x, y, z;
     output O;
@@ -46,6 +49,7 @@ module two_bit_multiplex(x, y, z, O);
     or(O, S1, S2, S3);
 endmodule
 
+// Gate level 4x1 multiplexor
 module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
     input A, B, C, D, ctrl1, ctrl2;
     output O;
@@ -54,7 +58,7 @@ module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
                       m3(tmp, tmp1, ctrl2, O);
 endmodule
 
-
+// Gate level implementation of all except the most significant 1 bit ALU
 module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
     output out, Cout;
@@ -73,6 +77,7 @@ module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, less, ctrl1, ctrl2, out);
 endmodule
 
+// Gate level implementation of most significant 1 bit ALU
 module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, carryIn, ctrl1, ctrl2;
     output out, Cout, set;
@@ -92,6 +97,7 @@ module one_bit_ALU2(A, B, bnot, anot, set, carryIn, ctrl2, ctrl1, out, Cout);
     four_bit_multiplex m1(BandA, BorA, S, 1'b0, ctrl1, ctrl2, out);
 endmodule
 
+// Gate level implementation of a 16 bit alu, comprised of 15 one_bit_ALU's and 1 one_bit_ALU2 for the most significant bit.
 module alu(op, a, b, result, zero);
     input[3:0] op;
     input [15:0] a, b;
@@ -116,45 +122,55 @@ module alu(op, a, b, result, zero);
    one_bit_ALU2 a16 (a[15], b[15], op[2], op[3], set, Carry15, op[1], op[0], result[15], Cout);
    
    xor(o1, Carry3, Cout);
-   nor(zero, result[0], result[1], result[2], result[3]);
+   nor(zero, result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8], result[9], result[10], result[11], result[12], result[13], result[14], result[15]);
     
 endmodule
 
 
 module MainControl (Op,Control); 
   input [3:0] Op;
-  output reg [10:0] Control;
-// Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
+  output reg [6:0] Control;
+// Control bits: RegDst,ALUSrc,RegWrite,ALUOp
   always @(Op) case (Op)
-    4'b0010: Control <= 12'b101_00_00_0000; // AND
-    4'b0111: Control <= 12'b011_00_00_0010; // ADDI
-    4'b0000: Control <= 12'b101_00_00_0010; //ADD
-    4'b0001: Control <= 12'b101_00_00_0110; //SUB
-    4'b0011: Control <= 12'b101_00_00_0001; //OR
-    4'b0100: Control <= 12'b101_00_00_1100; //NOR
-    4'b0101: Control <= 12'b101_00_00_1101; //NAND
-    4'b0110: Control <= 12'b101_00_00_0111; //SLT
-    4'b1000: Control <= 12'b011_10_00_0010; //LW
-    4'b1001: Control <= 12'b010_01_00_0010; //SW
-    4'b1010: Control <= 12'b000_00_01_0110;//BEQ
-    4'b1011: Control <= 12'b000_00_10_0110;//BNE
-    
+    4'b0010: Control <= 7'b1010000; // AND
+    4'b0111: Control <= 7'b0110010; // ADDI
+    4'b0000: Control <= 7'b1010010; //ADD
+    4'b0001: Control <= 7'b1010110; //SUB
+    4'b0011: Control <= 7'b1010001; //OR
+    4'b0100: Control <= 7'b1011100; //NOR
+    4'b0101: Control <= 7'b1011101; //NAND
+    4'b0110: Control <= 7'b1010111; //SLT
     
   endcase
 endmodule
 
-module CPU (clock,WD,IR,PC);
-
+module CPU (clock,PC,IFID_IR,IDEX_IR,WD);
   input clock;
-  output [15:0] WD,IR,PC;
-  reg[15:0] PC, IMemory[0:1023], DMemory[0:1023];
-  wire [15:0] IR,SignExtend,NextPC,RD2,A,B,ALUOut,PCplus4,Target;
-  wire [1:0] WR;
-  wire [3:0] ALUctl;
-  wire [1:0] ALUOp;
+  output [15:0] PC,IFID_IR,IDEX_IR,WD;
+  
+  initial begin
+  
+// Program with nop's - no hazards
+    IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
+    IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
+    IMemory[2]  = 16'h0000;  // nop
+    IMemory[3] = 16'b0010_01_10_11_000000;  // and  $t3, $t1, $t2  ($t3=7)
+    IMemory[4]  = 16'h0000;  // nop
+    IMemory[5] = 16'b0001_01_11_10_000000;  // sub  $t2, $t1, $t3  ($t2=8)
+    IMemory[6]  = 16'h0000;  // nop
+    IMemory[7] = 16'b0011_10_11_10_000000;  // or   $t2, $t2, $t3  ($t2=15)
+    IMemory[8]  = 16'h0000;  // nop
+    IMemory[9] = 16'b0000_10_11_11_000000;  // add  $t3, $t2, $t3  ($t3=22)
+    IMemory[10]  = 16'h0000;  // nop
+    IMemory[11] = 16'b0100_10_11_01_000000;  // nor  $t1, $t2, $t3  ($t1=-32)
+    IMemory[12] = 16'b0110_11_10_01_000000;  // slt  $t1, $t3, $t2  ($t1=0)
+    IMemory[13] = 16'b0110_10_11_01_000000;  // slt  $t1, $t2, $t3  ($t1=1)
+  end
+  /*
+
   initial begin 
- // Program: swap memory cells and compute absolute value
-    /*IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
+// Program without nop's - wrong results due to data hazards
+    IMemory[0] = 16'b0111_00_01_00001111;  // addi $t1, $0,  15   ($t1=15)
     IMemory[1] = 16'b0111_00_10_00000111;  // addi $t2, $0,  7    ($t2=7)
     IMemory[2] = 16'b0010_01_10_11_000000;  // and  $t3, $t1, $t2  ($t3=7)
     IMemory[3] = 16'b0001_01_11_10_000000;  // sub  $t2, $t1, $t3  ($t2=8)
@@ -163,54 +179,132 @@ module CPU (clock,WD,IR,PC);
     IMemory[6] = 16'b0100_10_11_01_000000;  // nor  $t1, $t2, $t3  ($t1=-32)
     IMemory[7] = 16'b0110_11_10_01_000000;  // slt  $t1, $t3, $t2  ($t1=0)
     IMemory[8] = 16'b0110_10_11_01_000000;  // slt  $t1, $t2, $t3  ($t1=1)
-    */
-    
-    IMemory[0] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
-    IMemory[1] = 16'b1000_00_10_00000100;  // lw $t2, 4($0)
-    IMemory[2] = 16'b0110_01_10_11_000000;  // slt $t3, $t1, $t2
-    IMemory[3] = 16'b1010_11_00_00000010;  // beq $t3, $0, IMemory[6] 
-    IMemory[4] = 16'b1001_00_01_00000100;  // sw $t1, 4($0) 
-    IMemory[5] = 16'b1001_00_10_00000000;  // sw $t2, 0($0) 
-    IMemory[6] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
-    IMemory[7] = 16'b1000_00_10_00000100;  // lw $t2, 4($0) 
-    IMemory[8] = 16'b0100_10_10_10_000000;  // nor $t2, $t2, $t2 (sub $3, $1, $2 in two's complement)
-    IMemory[9] = 16'b0111_10_10_00000001;  // addi $t2, $t2, 1 
-    IMemory[10] = 16'b0000_01_10_11_000000;  // add $t3, $t1, $t2
- // Data
-    DMemory [0] = 16'd7; // swap the cells and see how the simulation output changes
-    DMemory [1] = 16'd5;
   end
-  initial PC = 0;
-  assign IR = IMemory[PC>>2];
-  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
-  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
-  assign SignExtend = {{8{IR[7]}},IR[7:0]}; // sign extension unit
-  reg_file rf (IR[11:10],IR[9:8],WR,WD,RegWrite,A,RD2,clock);
-  alu fetch (4'b0010,PC,16'b100,PCplus4,Unused);
-  alu ex (ALUctl, A, B, ALUOut, Zero);
-  alu branch (4'b0010,SignExtend<<2,PCplus4,Target,Unused2);
-                // Control bits: RegDst,ALUSrc, RegWrite, MemToReg, MemWrite, bne, beq, ALUOp
-  MainControl MainCtr (IR[15:12],{RegDst,ALUSrc,RegWrite, MemtoReg, MemWrite, bne, beq ,ALUctl});
-  assign WR = (RegDst) ? IR[7:6]: IR[9:8]; // RegDst Mux
-  assign WD = (MemtoReg) ? DMemory[ALUOut>>2]: ALUOut; // MemtoReg Mux
-  assign B  = (ALUSrc) ? SignExtend: RD2; // ALUSrc Mux 
-  assign NextPC = ((beq && Zero) || (bne && !Zero)) ? Target: PCplus4; // Branch Mux
-  always @(negedge clock) begin 
+
+*/
+// Pipeline stages
+//=== IF STAGE ===
+   wire [15:0] NextPC;
+   reg[15:0] PC, IMemory[0:1023];
+//--------------------------------
+   reg[15:0] IFID_IR;
+//--------------------------------
+   alu fetch (4'b0010,PC,16'b0100,NextPC,Unused);
+
+//=== ID STAGE ===
+   wire [6:0] Control;
+   wire [15:0] RD1,RD2,SignExtend,WD;
+   wire [15:0] FWD_RD1,FWD_RD2; // Outputs of the forwarding muxes
+   reg [15:0] IDEX_IR; // For monitoring the pipeline
+   reg IDEX_RegWrite,IDEX_ALUSrc,IDEX_RegDst;
+   reg [3:0]  IDEX_ALUOp;
+   reg [15:0] IDEX_RD1,IDEX_RD2,IDEX_SignExt;
+   reg [1:0]  IDEX_rt,IDEX_rd;
+   wire [1:0] WR;
+   reg_file rf (IFID_IR[11:10],IFID_IR[9:8],WR,WD,IDEX_RegWrite,RD1,RD2,clock);
+   MainControl MainCtr (IFID_IR[15:12],Control); 
+   assign SignExtend = {{8{IFID_IR[7]}},IFID_IR[7:0]}; 
+
+//=== EXE STAGE ===
+   wire [15:0] B,ALUOut;
+   wire [3:0] ALUctl;
+   assign ALUctl = IDEX_ALUOp;
+   alu ex (ALUctl, IDEX_RD1, B, ALUOut, Zero);
+   assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;   // ALUSrc Mux 
+   assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;         // RegDst Mux
+   assign WD = ALUOut;
+
+// Forwarding multiplexers
+   assign FWD_RD1 = (IDEX_RegWrite && WR==IFID_IR[11:10]) ? ALUOut: RD1;
+   assign FWD_RD2 = (IDEX_RegWrite && WR==IFID_IR[9:8]) ? ALUOut: RD2;
+
+   initial begin
+    PC = 0;
+    IFID_IR = 0; // clear pipeline register to avoid forwarding from empty pipeline
+    IDEX_RegWrite = 0; 
+   end
+
+// Running the pipeline
+   always @(negedge clock) begin
+
+// Stage 1 - IF
     PC <= NextPC;
-    if (MemWrite) DMemory[ALUOut>>2] <= RD2;
+    IFID_IR <= IMemory[PC>>2];
+
+// Stage 2 - ID
+    IDEX_IR <= IFID_IR; // For monitoring the pipeline
+    {IDEX_RegDst,IDEX_ALUSrc,IDEX_RegWrite,IDEX_ALUOp} <= Control;    
+
+//  No Forwarding
+    IDEX_RD1 <= RD1; 
+    IDEX_RD2 <= RD2;
+
+//  Forwarding
+//  IDEX_RD1 <= FWD_RD1; 
+//  IDEX_RD2 <= FWD_RD2;
+
+    IDEX_SignExt <= SignExtend;
+    IDEX_rt <= IFID_IR[9:8];
+    IDEX_rd <= IFID_IR[7:6];
+
+// Stage 3 - EX
+// No transfers needed here - on negedge WD is written into register WR
   end
 endmodule
 
 // Test module
 module test ();
   reg clock;
-  wire signed [15:0] WD,IR,PC;
-  CPU test_cpu(clock,WD,IR,PC);
+  wire signed [15:0] PC,IFID_IR,IDEX_IR,WD;
+  CPU test_cpu(clock,PC,IFID_IR,IDEX_IR,WD);
   always #1 clock = ~clock;
   initial begin
-    $display ("PC  IR                                WD");
-    $monitor ("%2d  %b %2d (%b)",PC,IR,WD,WD);
+    $display ("PC  IFID_IR   IDEX_IR   WD");
+    $monitor ("%2d  %b  %b  %2d",PC,IFID_IR,IDEX_IR,WD);
     clock = 1;
-    #20 $finish;
+    #29 $finish;
   end
 endmodule
+
+
+/* Output
+Program with nop's
+---------------------------
+ PC  IFID_IR   IDEX_IR   WD
+ 0  00000000  xxxxxxxx   x
+ 4  2009000f  00000000   x
+ 8  200a0007  2009000f  15
+12  00000000  200a0007   7
+16  012a5824  00000000   0
+20  00000000  012a5824   7
+24  012b5022  00000000   0
+28  00000000  012b5022   8
+32  014b5025  00000000   0
+36  00000000  014b5025  15
+40  014b5820  00000000   0
+44  00000000  014b5820  22
+48  014b4827  00000000   0
+52  016a482a  014b4827  -32
+56  014b482a  016a482a   0
+60  xxxxxxxx  014b482a   1
+
+Program without nop's
+--------------------------
+PC  IFID_IR   IDEX_IR   WD
+ 0  00000000  xxxxxxxx   x
+ 4  2009000f  00000000   x
+ 8  200a0007  2009000f  15
+12  012a5824  200a0007   7
+16  012b5022  012a5824   X
+20  014b5025  012b5022   x
+24  014b5820  014b5025   X
+28  014b4827  014b5820   x
+32  016a482a  014b4827   X
+36  014b482a  016a482a   X
+40  xxxxxxxx  014b482a   X
+44  xxxxxxxx  xxxxxxxx   X
+48  xxxxxxxx  xxxxxxxx   X
+52  xxxxxxxx  xxxxxxxx   X
+56  xxxxxxxx  xxxxxxxx   X
+60  xxxxxxxx  xxxxxxxx   X
+*/

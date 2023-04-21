@@ -58,6 +58,38 @@ module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
                       m3(tmp, tmp1, ctrl2, O);
 endmodule
 
+//16 bit wide 2 to 1 multiplexer
+module two_to_one_sixteen_bit_mux(x, y, z, O);
+    input [15:0] x, y;
+    input z;
+    output [15:0] O;
+    two_bit_multiplex mux0 (x[0], y[0], z, O[0]),
+                      mux1 (x[1], y[1], z, O[1]),
+                      mux2 (x[2], y[2], z, O[2]),
+                      mux3 (x[3], y[3], z, O[3]),
+                      mux4 (x[4], y[4], z, O[4]),
+                      mux5 (x[5], y[5], z, O[5]),
+                      mux6 (x[6], y[6], z, O[6]),
+                      mux7 (x[7], y[7], z, O[7]),
+                      mux8 (x[8], y[8], z, O[8]),
+                      mux9 (x[9], y[9], z, O[9]),
+                      mux10 (x[10], y[10], z, O[10]),
+                      mux11 (x[11], y[11], z, O[11]),
+                      mux12 (x[12], y[12], z, O[12]),
+                      mux13 (x[13], y[13], z, O[13]),
+                      mux14 (x[14], y[14], z, O[14]),
+                      mux15 (x[15], y[15], z, O[15]);
+endmodule
+
+//2 bit wide 2 to 1 multiplexer
+module two_to_one_two_bit_mux(x, y, z, O);
+    input [1:0] x, y;
+    input z;
+    output [1:0] O;
+    two_bit_multiplex mux0 (x[0], y[0], z, O[0]),
+                      mux1 (x[1], y[1], z, O[1]);
+endmodule
+
 // Gate level implementation of all except the most significant 1 bit ALU
 module one_bit_ALU(A, B, bnot, anot, less, carryIn, ctrl2, ctrl1, out, Cout);
     input A, B, bnot, anot, less, carryIn, ctrl1, ctrl2;
@@ -210,8 +242,10 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,WD);
    wire [3:0] ALUctl;
    assign ALUctl = IDEX_ALUOp;
    alu ex (ALUctl, IDEX_RD1, B, ALUOut, Zero);
-   assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;   // ALUSrc Mux 
-   assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;         // RegDst Mux
+   //assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;   // ALUSrc Mux 
+   two_to_one_sixteen_bit_mux ALUSrcMux(IDEX_RD2, IDEX_SignExt, IDEX_ALUSrc, B);
+   //assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;         // RegDst Mux
+   two_to_one_two_bit_mux RegDstMux(IDEX_rt, IDEX_rd, IDEX_RegDst, WR);
    assign WD = ALUOut;
 
 // Forwarding multiplexers

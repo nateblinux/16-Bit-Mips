@@ -75,6 +75,15 @@ module two_to_one_sixteen_bit_mux(x, y, z, O);
                       mux15 (x[15], y[15], z, O[15]);
 endmodule
 
+//2 bit wide 2 to 1 multiplexer
+module two_to_one_two_bit_mux(x, y, z, O);
+    input [1:0] x, y;
+    input z;
+    output [1:0] O;
+    two_bit_multiplex mux0 (x[0], y[0], z, O[0]),
+                      mux1 (x[1], y[1], z, O[1]);
+endmodule
+
 //4 to 1 multiplexer
 module four_bit_multiplex(A, B, C, D, ctrl1, ctrl2, O);
     input A, B, C, D, ctrl1, ctrl2;
@@ -235,7 +244,9 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    wire [15:0] PCplus4, NextPC;
    reg[15:0] PC, IMemory[0:1023], IFID_IR, IFID_PCplus4;
    alu fetch (4'b0010,PC,16'b0010,PCplus4,Unused1);
-   assign NextPC = (EXMEM_beq && EXMEM_Zero) || (EXMEM_bne && !EXMEM_Zero) ? EXMEM_Target: PCplus4;
+   //assign NextPC = (EXMEM_beq && EXMEM_Zero) || (EXMEM_bne && !EXMEM_Zero) ? EXMEM_Target: PCplus4;
+   
+   two_to_one_sixteen_bit_mux nextPCmux (PCplus4, EXMEM_Target, (EXMEM_beq && EXMEM_Zero) || (EXMEM_bne && !EXMEM_Zero), NextPC);
 // ID
    wire [10:0] Control;
    reg IDEX_RegWrite,IDEX_MemtoReg,
@@ -268,8 +279,10 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    alu branch (4'b0010,IDEX_SignExt<<1,IDEX_PCplus4,Target,Unused2);
    alu ex (IDEX_ALUctl, IDEX_RD1, B, ALUOut, Zero);
    //ALUControl ALUCtrl(IDEX_ALUOp, IDEX_SignExt[5:0], ALUctl); // ALU control unit
-   assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;        // ALUSrc Mux 
-   assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;              // RegDst Mux
+   //assign B  = (IDEX_ALUSrc) ? IDEX_SignExt: IDEX_RD2;        // ALUSrc Mux
+   two_to_one_sixteen_bit_mux ALUSrcmux (IDEX_RD2, IDEX_SignExt, IDEX_ALUSrc, B);
+   //assign WR = (IDEX_RegDst) ? IDEX_rd: IDEX_rt;              // RegDst Mux
+   two_to_one_two_bit_mux RegDstmux (IDEX_rt, IDEX_rd, IDEX_RegDst, WR);
 // MEM
    reg MEMWB_MemtoReg;
    reg [15:0] DMemory[0:1023],MEMWB_MemOut,MEMWB_ALUOut;
@@ -279,6 +292,7 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    always @(negedge clock) if (EXMEM_MemWrite) DMemory[EXMEM_ALUOut>>1] <= EXMEM_RD2;
 // WB
    assign WD = (MEMWB_MemtoReg) ? MEMWB_MemOut: MEMWB_ALUOut; // MemtoReg Mux
+   two_to_one_sixteen_bit_mux MemtoRegmux (MEMWB_ALUOut, MEMWB_MemOut, MEMWB_MemtoReg, WD);
 
    initial begin
     PC = 0;

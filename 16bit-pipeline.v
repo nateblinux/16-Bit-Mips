@@ -214,13 +214,13 @@ module CPU (clock,PC,IFID_IR,IDEX_IR,EXMEM_IR,MEMWB_IR,WD);
    IMemory[10] = 16'h0;  // nop
    IMemory[11] = 16'h0;  // nop
    IMemory[12] = 26'h0;  // nop
-   IMemory[13] = 16'b1001_00_01_00000100;  // sw $t1, 4($0) 
+   IMemory[13] = 16'b1001_00_01_00000010;  // sw $t1, 4($0) 
    IMemory[14] = 16'b1001_00_10_00000000;  // sw $t2, 0($0) 
    IMemory[15] = 16'h0;  // nop
    IMemory[16] = 16'h0;  // nop
    IMemory[17] = 16'h0;  // nop
    IMemory[18] = 16'b1000_00_01_00000000;  // lw $t1, 0($0) 
-   IMemory[19] = 16'b1000_00_10_00000100;  // lw $t2, 4($0) 
+   IMemory[19] = 16'b1000_00_10_00000010;  // lw $t2, 4($0) 
    IMemory[20] = 16'h0;  // nop
    IMemory[21] = 16'h0;  // nop
    IMemory[22] = 16'h0;  // nop
